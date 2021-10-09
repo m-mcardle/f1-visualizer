@@ -19,58 +19,103 @@ ns = "{http://ergast.com/mrd/1.4}"
 driverStandings = dict() 
 maxRace = 100
 
+years = [*range(1950, 2022, 1)]
+
+# Variables that contain the year that the driversStandings have been loaded for and amount of races the dictionary has been filled out for
 loadedYear = 0
 loadedRaces = 0
 
 
+app.layout = html.Div([
+    html.Div(
+        dcc.Graph(
+            id='f1-graph',
+        )
+    ),
+    html.Div([
+        html.Div([
+            html.Div([
+                dcc.Slider(
+                    id='f1-slider',
+                    min=1,
+                    max=maxRace,
+                    value=1,
+                    step=1,
+                ),
+                ], style={'width': '50%', 'display': 'inline-block'}
+            ),
+            dcc.Dropdown(
+                id='f1-year',
+                options=[{'label': str(i), 'value': str(i)} for i in years],
+                value='2021',
+                style={'width': '50%', 'display': 'inline-block'}
+            ),
+            ], style={'text-align': 'center'}
+        ),
+        html.Div([
+            html.Button("Previous Race", id="previousRace", style={'margin': 'auto', 'padding': '10px', 'width': '30%'}),
+            html.Button("Next Race", id="nextRace", style={'margin': 'auto', 'padding': '10px', 'width': '30%'})
+            ], style={'text-align': 'center', 'margin': 'auto', 'padding': '10px', 'width': '50%'}
+        )
+    ])
+])
+
+
+
+### Summary: Initializes the drivers standing by adding an element into each driver's array for each race
+### param race: Integer representing the amount of races to initialize up to (ex: race = 2 ==> [0, 0, 0])
+### param year: Integer representing the year that will be parsed, if the year is changed then reset loadedRaces
 def FillDriversStandings(race, year):
     global loadedRaces
     global loadedYear
     global maxRace 
 
+    if race > maxRace:
+        race = maxRace
+
     if year != loadedYear:
         print("Happy new year!!")
         driverStandings.clear()
         loadedRaces = 0
-    diff = int(loadedRaces) - int(race)
+
+    diff = int(loadedRaces) - int(race) # TODO: bug where race = 'None' :P
     if diff > 0:
-        print("Clearing")
-        # driverStandings.clear()
-        # loadedRaces = 0
+        print("Clearing " + str(diff) + " races")
+
         for driver in driverStandings:
             for i in range(0, diff):
                 del driverStandings[driver][-1] # must have an item in it
 
         loadedRaces = race
-            
 
-    # TODO This needs to be changed due to the Anthony Davidson bug
-    # - Try ignoring any new drivers that are found bc if they aren't in this first query they must not be important
-    response = requests.get(f'http://ergast.com/api/f1/{year}/last/driverStandings')
-    content = response.text
-    root = ET.fromstring(content)
-    lastRace = root.find(f".//{ns}StandingsTable")
+    if loadedRaces < 1: # If no races are loaded, then get the list of drivers to init as a request
+        response = requests.get(f'http://ergast.com/api/f1/{year}/last/driverStandings')
+        content = response.text
+        root = ET.fromstring(content)
+        lastRace = root.find(f".//{ns}StandingsTable")
 
-    maxRace = int(lastRace.attrib["round"])
+        maxRace = int(lastRace.attrib["round"])
+        allDrivers = lastRace.findall(f".//{ns}Driver")
+        for driver in allDrivers:
+            # TODO maybe this isn't the best, what if driver of same name
+            firstName = driver.find(f".//{ns}GivenName").text
+            lastName = driver.find(f".//{ns}FamilyName").text
+            fullName = firstName + " " + lastName
 
-    allDrivers = lastRace.findall(f".//{ns}Driver")
+            for i in range(loadedRaces, race):
+                if fullName not in driverStandings:
+                    driverStandings[fullName] = [0.0, 0.0]
+                else:
+                    driverStandings[fullName].append(0.0)
+    else: # If the driverStandings is already initialized then just add a new element for each new race
+        for driver in driverStandings:
+            for i in range(loadedRaces, race):
+                driverStandings[driver].append(0.0)
+    
 
-    if race > maxRace:
-        race = maxRace
-
-    for driver in allDrivers:
-        # TODO maybe this isn't the best
-        firstName = driver.find(f".//{ns}GivenName").text
-        lastName = driver.find(f".//{ns}FamilyName").text
-        fullName = firstName + " " + lastName
-
-        for i in range(loadedRaces, race):
-            if fullName not in driverStandings:
-                driverStandings[fullName] = [0.0, 0.0]
-            else:
-                driverStandings[fullName].append(0.0)
-
-
+### Summary: Builds the drivers standing by looping for each standings after race amount of races
+### param race: Integer representing the amount of races to parse for
+### param year: Integer representing the year to parse for
 def DriverStandingsBuilder(race, year):
     global loadedRaces
     global loadedYear
@@ -79,13 +124,13 @@ def DriverStandingsBuilder(race, year):
     if race > maxRace + 1:
         race = maxRace + 1
     
-    print("Building Standings after " + str(race) + " races")
-    for currentRace in range(loadedRaces + 1, race):
+    print(f"Building Standings after {race} races in {year}")
+    for currentRace in range(loadedRaces + 1, race + 1):
 
         print("Sending Request for Race " + str(currentRace))
         response = requests.get(f'http://ergast.com/api/f1/{year}/{currentRace}/driverStandings')
-
         print("Recieved Response")
+
         content = response.text
         # print(content)
 
@@ -100,51 +145,70 @@ def DriverStandingsBuilder(race, year):
             firstName = result.find(f"./{ns}Driver/{ns}GivenName")
             lastName = result.find(f"./{ns}Driver/{ns}FamilyName")
 
-            driverName = firstName.text + " " + lastName.text
-            if driverName not in driverStandings:
-                driverStandings[driverName] = [0] * (race)
+            driverName = f"{firstName.text} {lastName.text}"
+            if driverName not in driverStandings: # If driver not initilized in standings then skip him
+                continue
 
-            driverStandings[driverName][currentRace] = (float(points))
+            driverStandings[driverName][currentRace] = (float(points)) # TODO bug index out of range using previous twice then next once
 
         print("Parsing End")
-    loadedRaces = race - 1
+    loadedRaces = race
     loadedYear = year
-    print("Loaded Races = " + str(loadedRaces) + " Loaded Years = " + str(loadedYear))
+    print(f"Loaded Races = {loadedRaces}. Loaded Year = {loadedYear}\n")
 
-years = [*range(1960, 2022, 1)]
+
+def get_max_races(year):
+    global maxRace
+
+    response = requests.get(f'http://ergast.com/api/f1/{year}/last/driverStandings')
+    content = response.text
+    root = ET.fromstring(content)
+    lastRace = root.find(f".//{ns}StandingsTable")
+
+    maxRace = int(lastRace.attrib["round"])
+    return maxRace
+
+
 
 FillDriversStandings(-1, 2021)
 
-df = pd.DataFrame(driverStandings)
-fig = df.plot(title="2021 F1 Drivers Standings", labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"))
 
-app.layout = html.Div([
-    html.Div(
-        dcc.Graph(
-            id='f1-graph',
-        )
-    ),
-    html.Div([
-        dcc.Slider(
-            id='f1-slider',
-            min=1,
-            max=maxRace,
-            value=1,
-            step=1
-        ),
-        dcc.Dropdown(
-            id='f1-year',
-            options=[{'label': str(i), 'value': str(i)} for i in years],
-            value='2021'
-        )
-    ])
-])
+colours = [
+    "gold",
+    "silver",
+    "peru",
+    "red",
+    "crimson",
+    "darkred",
+    "orange",
+    "lightsalmon",
+    "yellow",
+    "lime",
+    "green",
+    "seagreen",
+    "aquamarine",
+    "aqua",
+    "blue",
+    "darkblue",
+    "navy",
+    "indigo",
+    "violet",
+    "purple",
+    "fuchsia",
+    "hotpink",
+    "lightpink",
+    "magenta",
+    "black",
+]
+df = pd.DataFrame(driverStandings)
+fig = df.plot(title="2021 F1 Drivers Standings", labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"), markers=True, color_discrete_sequence=colours)
+
 
 def create_f1_figure(race, year):
     FillDriversStandings(race, year)
-    DriverStandingsBuilder(race + 1, year)
+    DriverStandingsBuilder(race, year)
     df = pd.DataFrame(driverStandings)
-    fig = df.plot(title=f"{year} F1 Drivers Standings", labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"))
+    fig = df.plot(title=f"{year} F1 Drivers Standings", labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"), markers=True, color_discrete_sequence=colours)
     
     fig.update_layout(
         xaxis = dict(
@@ -158,23 +222,62 @@ def create_f1_figure(race, year):
     dash.dependencies.Output('f1-graph', 'figure'),
     [
         dash.dependencies.Input('f1-slider', 'value'),
-        dash.dependencies.Input('f1-year', 'value')
+        dash.dependencies.Input('f1-year', 'value'),
+        dash.dependencies.Input('previousRace', 'n_clicks'),
+        dash.dependencies.Input('nextRace', 'n_clicks')
     ]
-    )
-def update_graph(races, year):
-    return create_f1_figure(races, year)
+    ) # Update figure based on if the slider or year changes (either by year dial or prev next buttons)
+def update_graph(races, year, prevClicks, nextClicks):
+    if (races == None): # TODO this feels bad
+        races = 1
 
+    ctx = dash.callback_context
+    if not ctx.triggered: # If no trigger then just use the values of year and value
+        return create_f1_figure(races, year)
+
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0] # Gets the name of the id of the trigger
+    if (trigger == "previousRace" and loadedRaces > 1):
+        return create_f1_figure(loadedRaces - 1, year)
+    elif (trigger == "nextRace" and loadedRaces != maxRace):
+        return create_f1_figure(loadedRaces + 1, year)
+    else:
+        print("Fallback Path")
+        return create_f1_figure(races, year)
 
 @app.callback(
     dash.dependencies.Output('f1-slider', 'max'),
     [
-        dash.dependencies.Input('f1-year', 'value'),
-        dash.dependencies.Input('f1-slider', 'value')
-
+        dash.dependencies.Input('f1-year', 'value')
     ]
-)
-def update_graph(year, currentValue):
+) # Update the sliders max value when a new year is picked (the new race is a bit of a hack because it sometimes doesn't update)
+def update_slider_max(year):
+    get_max_races(year)
     return maxRace
+
+
+@app.callback(
+    dash.dependencies.Output('f1-slider', 'value'),
+    [
+        dash.dependencies.Input('f1-year', 'value'),
+        dash.dependencies.Input('previousRace', 'n_clicks'),
+        dash.dependencies.Input('nextRace', 'n_clicks')
+    ]
+) # Set the value to 1 every time the year changes
+def update_slider_value(year, prevClicks, nextClicks): #year, 
+
+    ctx = dash.callback_context
+    if not ctx.triggered: # If no trigger then just set it to 1
+        return 1
+
+    trigger = ctx.triggered[0]['prop_id'].split('.')[0] # Gets the name of the id of the trigger
+    if (trigger == "previousRace"):
+        if (loadedRaces <= 1): return loadedRaces
+        return loadedRaces - 1
+    elif (trigger == "nextRace"):
+        if (loadedRaces >= maxRace): return loadedRaces
+        return loadedRaces + 1
+    else:
+        return 1
 
 if __name__ == '__main__':
     app.run_server(debug=True)
