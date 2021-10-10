@@ -19,6 +19,8 @@ ns = "{http://ergast.com/mrd/1.4}"
 driverStandings = dict() 
 maxRace = 100
 
+raceNames = dict()
+
 years = [*range(1950, 2022, 1)]
 
 # Variables that contain the year that the driversStandings have been loaded for and amount of races the dictionary has been filled out for
@@ -41,6 +43,7 @@ app.layout = html.Div([
                     max=maxRace,
                     value=1,
                     step=1,
+                    dots=True
                 ),
                 ], style={'width': '50%', 'display': 'inline-block'}
             ),
@@ -168,10 +171,30 @@ def get_max_races(year):
     maxRace = int(lastRace.attrib["round"])
     return maxRace
 
+def get_race_names(year):
+    raceNames.clear()
+
+    response = requests.get(f'http://ergast.com/api/f1/{year}')
+    content = response.text
+    root = ET.fromstring(content)
+    races = root.findall(f".//{ns}RaceTable/*")
+
+    i = 1
+    for race in races:
+        raceName = race.find(f".//{ns}RaceName").text.replace(" Grand Prix", "") + " GP"
+        raceNames[str(i)] = \
+        {
+            'label': raceName, 
+            'style':
+                {
+                    'display': 'block', 'width': '50px', 'font-size': '7px', 'word-wrap': 'break-word', 'word-break': 'break-all', 'white-space': 'normal'
+                }
+        }
+        i += 1
 
 
 FillDriversStandings(-1, 2021)
-
+get_race_names(2021)
 
 colours = [
     "gold",
@@ -278,6 +301,16 @@ def update_slider_value(year, prevClicks, nextClicks): #year,
         return loadedRaces + 1
     else:
         return 1
+
+@app.callback(
+    dash.dependencies.Output('f1-slider', 'marks'),
+    [
+        dash.dependencies.Input('f1-year', 'value')
+    ]
+)
+def update_slider_labels(year):
+    get_race_names(year)
+    return raceNames
 
 if __name__ == '__main__':
     app.run_server(debug=True)
