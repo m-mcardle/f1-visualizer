@@ -9,6 +9,7 @@ from dash.dependencies import Input, Output
 import plotly.express as px
 import pandas as pd
 from requests.api import get
+import random
 
 pd.options.plotting.backend = "plotly"
 
@@ -17,7 +18,73 @@ app = dash.Dash(__name__)
 ns = "{http://ergast.com/mrd/1.4}"
 
 # Dictionary containing keys of drivers name, and values of Lists containing total points after each race
-standings = dict() 
+standings = dict()
+
+# Array containing colours to use for each driver
+standingsTeamColours = []
+
+teamColours = {
+    "Alfa Romeo": "maroon",
+    "AlphaTauri": "grey",
+    "Alpine F1 Team": "blue",
+    "Aston Martin": "green",
+    "Red Bull": "navy",
+    "Brawn": "chartreuse",
+    "BAR": "whitesmoke",
+    "BMW Sauber": "cornflowerblue",
+    "BRM": "darkgreen",
+    "Benetton": "skyblue",
+    "Brabham": "darkblue",
+    "Brabham-Repco": "green",
+    "Caterham": "green",
+    "Cooper-Castellotti": "green",
+    "Cooper-Climax": "midnightblue",
+    "Cooper-Maserati": "red",
+    "Dallara": "red",
+    "Epperly": "yellow",
+    "Euro Brun": "orange",
+    "Fittipaldi": "yellow",
+    "Footwork": "whitesmoke",
+    "Forti": "yellow",
+    "Force India": "coral",
+    "Ferrari": "red",
+    "HRT": "whitesmoke",
+    "Haas F1 Team": "whitesmoke",
+    "Honda": "whitesmoke",
+    "Jaguar": "green",
+    "Jordan": "limegreen",
+    "Larrousse": "navy",
+    "Leyton House": "lightskyblue",
+    "Ligier": "blue",
+    "Lotus": "black",
+    "Lotus F1": "black",
+    "MF1": "red",
+    "Manor Marussia": "orange",
+    "Marussia": "red",
+    "Maserati": "darkred",
+    "McLaren": "orange",
+    "McLaren-Alfa Romeo": "yellow",
+    "McLaren-Ford": "whitesmoke",
+    "Mercedes": "aqua",
+    "Minardi": "yellow",
+    "Renault": "yellow",
+    "Racing Point": "hotpink",
+    "Sauber": "crimson",
+    "Spyker": "orange",
+    "Spyker MF1": "orange",
+    "Super Aguri": "whitesmoke",
+    "Team Lotus": "green",
+    "Toro Rosso": "midnightblue",
+    "Toleman": "blue",
+    "Toyota": "whitesmoke",
+    "Tyrrell": "mediumblue",
+    "Williams": "lightblue",
+    "Virgin": "orange",
+    "Gold": "gold",
+    "Silver": "silver",
+}
+# Use this to build out list of colours
+
 maxRace = 100
 driverStandings = True
 
@@ -83,7 +150,8 @@ def getStandingsType():
 def FillDriversStandings(race, year):
     global loadedRaces
     global loadedYear
-    global maxRace 
+    global maxRace
+    global standingsTeamColours
 
     if race > maxRace:
         race = maxRace
@@ -91,6 +159,7 @@ def FillDriversStandings(race, year):
     if year != loadedYear:
         print("Happy new year!!")
         standings.clear()
+        standingsTeamColours.clear()
         loadedRaces = 0
 
     diff = int(loadedRaces) - int(race) # TODO: bug where race = 'None' :P
@@ -113,16 +182,22 @@ def FillDriversStandings(race, year):
         maxRace = int(lastRace.attrib["round"])
 
         if standingsType == "driverStandings":
-            allDrivers = lastRace.findall(f".//{ns}Driver")
-            for driver in allDrivers:
+            allDriverRankings = lastRace.findall(f".//{ns}DriverStanding")
+            for driver in allDriverRankings:
                 # TODO maybe this isn't the best, what if driver of same name
                 firstName = driver.find(f".//{ns}GivenName").text
                 lastName = driver.find(f".//{ns}FamilyName").text
                 fullName = firstName + " " + lastName
 
+                team = driver.find(f".//{ns}Constructor/{ns}Name").text
+
                 for i in range(loadedRaces, race):
                     if fullName not in standings:
                         standings[fullName] = [0.0, 0.0]
+                        if team in teamColours:
+                            standingsTeamColours.append(teamColours[team])
+                        else:
+                            standingsTeamColours.append(random.choice(list(teamColours.values())))
                     else:
                         standings[fullName].append(0.0)
         else:
@@ -133,6 +208,10 @@ def FillDriversStandings(race, year):
                 for i in range(loadedRaces, race):
                     if name not in standings:
                         standings[name] = [0.0, 0.0]
+                        if name in teamColours:
+                            standingsTeamColours.append(teamColours[name])
+                        else:
+                            standingsTeamColours.append(random.choice(list(teamColours.values())))
                     else:
                         standings[name].append(0.0)
     else: # If the driverStandings is already initialized then just add a new element for each new race
@@ -270,7 +349,7 @@ def create_f1_figure(race, year):
     FillDriversStandings(race, year)
     StandingsBuilder(race, year)
     df = pd.DataFrame(standings)
-    fig = df.plot(title=f"{year} F1 {standingsType} Standings", labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"), markers=True, color_discrete_sequence=colours)
+    fig = df.plot(title=f"{year} F1 {standingsType} Standings", labels=dict(index="Race", value="Points", variable=f"{standingsType[:-1]}", isinteractive="true"), markers=True, color_discrete_sequence=standingsTeamColours)
     
     fig.update_layout(
         xaxis = dict(
@@ -309,6 +388,7 @@ def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
     elif (trigger == "standingsToggle"):
         driverStandings = not driverStandings
         standings.clear()
+        standingsTeam.clear()
         loadedRaces = 0
         return create_f1_figure(races, year)
     else:
