@@ -3,11 +3,14 @@ import requests
 import xml.etree.ElementTree as ET
 import time
 import dash
+import plotly.express as px
+import pandas as pd
+import sys
+import logging
+import logging.handlers
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
-import plotly.express as px
-import pandas as pd
 from requests.api import get
 
 pd.options.plotting.backend = "plotly"
@@ -29,6 +32,24 @@ years = [*range(1950, 2022, 1)]
 loadedYear = 0
 loadedRaces = 0
 
+# Set up the logging
+logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+rootLogger = logging.getLogger()
+
+# Build our log handler with formatting
+fileHandler = logging.FileHandler('f1-visualizer.log')
+fileHandler.setFormatter(logFormatter)
+rootLogger.addHandler(fileHandler)
+
+consoleHandler = logging.StreamHandler()
+consoleHandler.setFormatter(logFormatter)
+rootLogger.addHandler(consoleHandler)
+rootLogger.setLevel(level=logging.INFO)
+
+rootLogger.error("This is a test error")
+rootLogger.warning("This is a test warning")
+rootLogger.debug("This is a test debug")
+rootLogger.info("This is a test info")
 
 app.layout = html.Div([
     html.Div(
@@ -89,14 +110,13 @@ def FillDriversStandings(race, year):
         race = maxRace
 
     if year != loadedYear:
-        print("Happy new year!!")
+        rootLogger.info("Happy new year!!")
         standings.clear()
         loadedRaces = 0
 
     diff = int(loadedRaces) - int(race) # TODO: bug where race = 'None' :P
     if diff > 0:
-        print("Clearing " + str(diff) + " races")
-
+        rootLogger.info('Clearing %s races', str(diff))
         for driver in standings:
             for i in range(0, diff):
                 del standings[driver][-1] # must have an item in it
@@ -155,12 +175,14 @@ def StandingsBuilder(race, year):
     
     standingsType = getStandingsType()
 
-    print(f"Building Standings after {race} races in {year}")
+    rootLogger.info('Building Standings after %s races in %s', race, year)
+
     for currentRace in range(loadedRaces + 1, race + 1):
 
-        print("Sending Request for Race " + str(currentRace))
+        rootLogger.info('Sending Request for Race %s', str(currentRace))
+
         response = requests.get(f'http://ergast.com/api/f1/{year}/{currentRace}/{standingsType}')
-        print("Recieved Response")
+        rootLogger.info("Recieved Response")
 
         content = response.text
         # print(content)
@@ -170,7 +192,7 @@ def StandingsBuilder(race, year):
 
         results = root.findall(f".//{ns}StandingsList/*")
 
-        print("Parsing Start")
+        rootLogger.info("Parsing Start")
         for result in results:
             points = result.attrib["points"]
 
@@ -179,18 +201,21 @@ def StandingsBuilder(race, year):
                 lastName = result.find(f"./{ns}Driver/{ns}FamilyName")
 
                 name = f"{firstName.text} {lastName.text}"
+                rootLogger.info("Driver: %s", name)
             else:
                 name = result.find(f"./{ns}Constructor/{ns}Name").text
+                rootLogger.info("Constructor: %s", name)
 
             if name not in standings: # If driver not initilized in standings then skip him
                 continue
 
             standings[name][currentRace] = (float(points)) # TODO bug index out of range using previous twice then next once
 
-        print("Parsing End")
+        rootLogger.info("Parsing End")
     loadedRaces = race
     loadedYear = year
-    print(f"Loaded Races = {loadedRaces}. Loaded Year = {loadedYear}\n")
+    rootLogger.info(f"Loaded Races = {loadedRaces}. Loaded Year = {loadedYear}\n")
+    
 
 
 def get_max_races(year):
@@ -312,7 +337,7 @@ def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
         loadedRaces = 0
         return create_f1_figure(races, year)
     else:
-        print("Fallback Path")
+        rootLogger.info("Fallback Path")
         return create_f1_figure(races, year)
 
 @app.callback(
