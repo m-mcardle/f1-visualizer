@@ -388,7 +388,7 @@ def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
     elif (trigger == "standingsToggle"):
         driverStandings = not driverStandings
         standings.clear()
-        standingsTeam.clear()
+        standingsTeamColours.clear()
         loadedRaces = 0
         return create_f1_figure(races, year)
     else:
