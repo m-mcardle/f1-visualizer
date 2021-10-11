@@ -13,6 +13,7 @@ from dash import html
 from dash.dependencies import Input, Output
 from requests.api import get
 import random
+from clinched import calculateClinch
 
 pd.options.plotting.backend = "plotly"
 
@@ -25,6 +26,9 @@ standings = dict()
 
 # Array containing colours to use for each driver
 standingsTeamColours = []
+
+# Array containing marks that indicate if they are still in contension
+standingsEliminated = []
 
 teamColours = {
     "Alfa Romeo": "maroon",
@@ -98,6 +102,7 @@ years = [*range(1950, 2022, 1)]
 # Variables that contain the year that the standings have been loaded for and amount of races the dictionary has been filled out for
 loadedYear = 0
 loadedRaces = 0
+inProgress = False
 
 # Set up the logging
 logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
@@ -157,6 +162,14 @@ app.layout = html.Div([
     ])
 ])
 
+def clearStandings():
+    global loadedRaces
+    standings.clear()
+    standingsTeamColours.clear()
+    standingsEliminated.clear()
+    loadedRaces = 0
+
+
 def getStandingsType():
     global driverStandings
     if driverStandings:
@@ -164,11 +177,39 @@ def getStandingsType():
     else:
         return "constructorStandings"
 
+def getLeaderPoints():
+    leaderPoints = -1
+    leaderName = "None"
+    for key in standings:
+        if standings[key][loadedRaces] > leaderPoints:
+            leaderPoints = standings[key][loadedRaces]
+            leaderName = key
+
+    return { 'name': leaderName, 'points': leaderPoints }
+
+def checkForClinch():
+    leader = getLeaderPoints()
+    leaderPoints = leader['points']
+    leaderName = leader['name']
+    racesLeft = int(maxRace) - int(loadedRaces)
+
+    i = 0
+    for name in standings:
+        points = standings[name][loadedRaces]
+        pointsFromLeader = float(leaderPoints) - float(points)
+        if name == leaderName or calculateClinch(loadedYear, racesLeft, pointsFromLeader, driverStandings):
+            rootLogger.info(f"{name} still in contension. Only {pointsFromLeader} back of 1st with {racesLeft} races left. Has {points} points")
+        else:
+            rootLogger.info(f"{name} NOT in contension. Is {pointsFromLeader} back of 1st with only {racesLeft} races left. Has {points} points")
+
+            standingsEliminated.append({'x': loadedRaces, 'y': points})
+        i += 1
 
 ### Summary: Initializes the drivers standing by adding an element into each driver's array for each race
 ### param race: Integer representing the amount of races to initialize up to (ex: race = 2 ==> [0, 0, 0])
 ### param year: Integer representing the year that will be parsed, if the year is changed then reset loadedRaces
 def FillDriversStandings(race, year):
+    global inProgress
     global loadedRaces
     global loadedYear
     global maxRace
@@ -178,10 +219,9 @@ def FillDriversStandings(race, year):
         race = maxRace
 
     if year != loadedYear:
-        rootLogger.info("Happy new year!!")
-        standings.clear()
-        standingsTeamColours.clear()
-        loadedRaces = 0
+        rootLogger.info("Year has changed, clearing standings.")
+        clearStandings()
+        loadedYear = year
 
     diff = int(loadedRaces) - int(race) # TODO: bug where race = 'None' :P
     if diff > 0:
@@ -189,10 +229,17 @@ def FillDriversStandings(race, year):
         for driver in standings:
             for i in range(0, diff):
                 del standings[driver][-1] # must have an item in it
-
+                # TODO going to need to delete annotations here
         loadedRaces = race
 
     standingsType = getStandingsType()
+
+    if inProgress: 
+        rootLogger.warning("Multiple threads detected. Not changing any data in this thread.")
+        return False
+    else: 
+        inProgress = True
+
     if loadedRaces < 1: # If no races are loaded, then get the list of drivers to init as a request
         response = requests.get(f'http://ergast.com/api/f1/{year}/last/{standingsType}')
         content = response.text
@@ -235,15 +282,18 @@ def FillDriversStandings(race, year):
                     else:
                         standings[name].append(0.0)
     else: # If the driverStandings is already initialized then just add a new element for each new race
-        for driver in standings:
+        for element in standings:
             for i in range(loadedRaces, race):
-                standings[driver].append(0.0)
+                standings[element].append(0.0)
+
+    return True
     
 
 ### Summary: Builds the drivers standing by looping for each standings after race amount of races
 ### param race: Integer representing the amount of races to parse for
 ### param year: Integer representing the year to parse for
 def StandingsBuilder(race, year):
+    global inProgress
     global loadedRaces
     global loadedYear
     global maxRace 
@@ -290,9 +340,15 @@ def StandingsBuilder(race, year):
 
             standings[name][currentRace] = (float(points)) # TODO bug index out of range using previous twice then next once
 
+
+
         rootLogger.info("Parsing End")
+        loadedRaces = currentRace
+        checkForClinch()
+
     loadedRaces = race
-    loadedYear = year
+
+    inProgress = False
     rootLogger.info(f"Loaded Races = {loadedRaces}. Loaded Year = {loadedYear}\n")
     
 
@@ -332,8 +388,8 @@ def get_race_names(year):
         i += 1
 
 
-FillDriversStandings(-1, 2021)
-get_race_names(2021)
+# FillDriversStandings(-1, 2021)
+# get_race_names(2021)
 
 colours = [
     "gold",
@@ -363,7 +419,12 @@ colours = [
     "black",
 ]
 df = pd.DataFrame(standings)
-fig = df.plot(title="2021 F1 Drivers Standings", labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"), markers=True, color_discrete_sequence=colours)
+fig = df.plot(
+    title="2021 F1 Drivers Standings",
+    labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"),
+    markers=True,
+    color_discrete_sequence=colours
+)
 
 
 def create_f1_figure(race, year):
@@ -371,10 +432,25 @@ def create_f1_figure(race, year):
     if not driverStandings:
         standingsType = "Constructors"
 
-    FillDriversStandings(race, year)
-    StandingsBuilder(race, year)
+    if FillDriversStandings(race, year): # If the standings are successfully initilized then fill it with the correct Points
+        StandingsBuilder(race, year)
+
     df = pd.DataFrame(standings)
-    fig = df.plot(title=f"{year} F1 {standingsType} Standings", labels=dict(index="Race", value="Points", variable=f"{standingsType[:-1]}", isinteractive="true"), markers=True, color_discrete_sequence=standingsTeamColours)
+    fig = df.plot(
+        title=f"{year} F1 {standingsType} Standings",
+        labels=dict(index="Race", value="Points",
+        variable=f"{standingsType[:-1]}", isinteractive="true"),
+        markers=True,
+        color_discrete_sequence=standingsTeamColours
+    )
+
+    for xy in standingsEliminated:
+        fig.add_annotation(
+            x=xy['x'],
+            y=xy['y'],
+            text="x",
+            showarrow=False
+        )
     
     fig.update_layout(
         xaxis = dict(
@@ -411,10 +487,9 @@ def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
     elif (trigger == "nextRace" and loadedRaces != maxRace):
         return create_f1_figure(loadedRaces + 1, year)
     elif (trigger == "standingsToggle"):
+        rootLogger.info("Standings type has be toggled. Clearing data.")
         driverStandings = not driverStandings
-        standings.clear()
-        standingsTeamColours.clear()
-        loadedRaces = 0
+        clearStandings()
         return create_f1_figure(races, year)
     else:
         rootLogger.info("Fallback Path")
