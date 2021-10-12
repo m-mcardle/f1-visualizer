@@ -14,7 +14,6 @@ The script install_deps.sh can be run to automatically install the needed depend
 
 Known Issues:
 - Spamming any of the buttons/sliders before the rendering is finished can cause weird states
-- Pressing the previous race button will not remove any of the annotations that indicate a driver is not in contention anymore
 
 ---
 

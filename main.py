@@ -156,7 +156,7 @@ app.layout = html.Div([
             ], style={'text-align': 'center', 'margin': 'auto', 'padding': '10px', 'width': '50%'}
         ),
         html.Div([
-            html.Button("Toggle Drivers/Constructors Standings", id="standingsToggle", style={'margin': 'auto', 'padding': '10px', 'width': '30%'})
+            html.Button("View Constructors Standings", id="standingsToggle", style={'margin': 'auto', 'padding': '10px', 'width': '30%'})
             ], style={'text-align': 'center', 'margin': 'auto', 'padding': '10px', 'width': '50%'}
         )
     ])
@@ -229,7 +229,14 @@ def FillDriversStandings(race, year):
         for driver in standings:
             for i in range(0, diff):
                 del standings[driver][-1] # must have an item in it
-                # TODO going to need to delete annotations here
+        i = 0
+        standingsEliminatedCopy = standingsEliminated.copy()
+        for xy in standingsEliminatedCopy: # Delete all annotations that are now in races that aren't loaded
+            if xy['x'] > race:
+                del standingsEliminated[i]
+            else:
+                i += 1
+        
         loadedRaces = race
 
     standingsType = getStandingsType()
@@ -539,6 +546,20 @@ def update_slider_value(year, prevClicks, nextClicks): #year,
 def update_slider_labels(year):
     get_race_names(year)
     return raceNames
+
+@app.callback(
+    dash.dependencies.Output('standingsToggle', 'children'),
+    [
+        dash.dependencies.Input('standingsToggle', 'n_clicks'),
+    ]
+)
+def change_toggle_label(clicks):
+    global driverStandings
+    if driverStandings:
+        return "View Constructors Standings"
+    else:
+        return "View Drivers Standings"
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
