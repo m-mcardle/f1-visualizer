@@ -92,12 +92,14 @@ teamColours = {
 }
 # Use this to build out list of colours
 
-maxRace = 100
-driverStandings = True
 
-raceNames = dict()
+totalRaces = 100 # Integer for total amount of races scheduled in a season
+maxRace = 100 # Integer for amount of races completed in a season
+driverStandings = True # Boolean for if driver standings should be displayed
 
-years = [*range(1950, 2022, 1)]
+raceNames = dict() # Dictionary containing the html values to include for each mark label for the slider
+
+years = [*range(1950, 2022, 1)] # Range of years that this program supports
 
 # Variables that contain the year that the standings have been loaded for and amount of races the dictionary has been filled out for
 loadedYear = 0
@@ -162,6 +164,7 @@ app.layout = html.Div([
     ])
 ])
 
+# Summary: Function to clear all lists and reset loadedRaces to 0
 def clearStandings():
     global loadedRaces
     standings.clear()
@@ -187,11 +190,13 @@ def getLeaderPoints():
 
     return { 'name': leaderName, 'points': leaderPoints }
 
+# Summary: Function that will call on calculateClinch and build out an array 
+# of data points that indicates drivers/teams eliminated from contension
 def checkForClinch():
     leader = getLeaderPoints()
     leaderPoints = leader['points']
     leaderName = leader['name']
-    racesLeft = int(maxRace) - int(loadedRaces)
+    racesLeft = int(totalRaces) - int(loadedRaces)
 
     i = 0
     for name in standings:
@@ -205,9 +210,10 @@ def checkForClinch():
             standingsEliminated.append({'x': loadedRaces, 'y': points})
         i += 1
 
-### Summary: Initializes the drivers standing by adding an element into each driver's array for each race
-### param race: Integer representing the amount of races to initialize up to (ex: race = 2 ==> [0, 0, 0])
-### param year: Integer representing the year that will be parsed, if the year is changed then reset loadedRaces
+# Summary: Initializes the drivers standing by adding an element into each driver's array for each race
+# 
+# param race: Integer representing the amount of races to initialize up to (ex: race = 2 ==> [0, 0, 0])
+# param year: Integer representing the year that will be parsed, if the year is changed then reset loadedRaces
 def FillDriversStandings(race, year):
     global inProgress
     global loadedRaces
@@ -296,9 +302,10 @@ def FillDriversStandings(race, year):
     return True
     
 
-### Summary: Builds the drivers standing by looping for each standings after race amount of races
-### param race: Integer representing the amount of races to parse for
-### param year: Integer representing the year to parse for
+# Summary: Builds the drivers standing by looping for each standings after race amount of races
+# 
+# param race: Integer representing the amount of races to parse for
+# param year: Integer representing the year to parse for
 def StandingsBuilder(race, year):
     global inProgress
     global loadedRaces
@@ -359,7 +366,9 @@ def StandingsBuilder(race, year):
     rootLogger.info(f"Loaded Races = {loadedRaces}. Loaded Year = {loadedYear}\n")
     
 
-
+# Summary: Function that sends a request to determine the amount of races completed so far in a given season
+#
+# param year: number indicating what year to parse for
 def get_max_races(year):
     global maxRace
 
@@ -373,7 +382,11 @@ def get_max_races(year):
     maxRace = int(lastRace.attrib["round"])
     return maxRace
 
+# Summary: Function to build out array containing the names of each race in a season
+#
+# param year: number indicating what year to get the races from
 def get_race_names(year):
+    global totalRaces
     raceNames.clear()
 
     response = requests.get(f'http://ergast.com/api/f1/{year}')
@@ -394,46 +407,13 @@ def get_race_names(year):
         }
         i += 1
 
-
-# FillDriversStandings(-1, 2021)
-# get_race_names(2021)
-
-colours = [
-    "gold",
-    "silver",
-    "peru",
-    "red",
-    "crimson",
-    "darkred",
-    "orange",
-    "lightsalmon",
-    "yellow",
-    "lime",
-    "green",
-    "seagreen",
-    "aquamarine",
-    "aqua",
-    "blue",
-    "darkblue",
-    "navy",
-    "indigo",
-    "violet",
-    "purple",
-    "fuchsia",
-    "hotpink",
-    "lightpink",
-    "magenta",
-    "black",
-]
-df = pd.DataFrame(standings)
-fig = df.plot(
-    title="2021 F1 Drivers Standings",
-    labels=dict(index="Race", value="Points", variable="Driver", isinteractive="true"),
-    markers=True,
-    color_discrete_sequence=colours
-)
+    totalRaces = i
 
 
+# Summary: Function used from callbacks to build out updated standings based on the new race or year
+#
+# param race: number indicating what race in the season should be parsed up to
+# param year: number indicating what year to send requests for
 def create_f1_figure(race, year):
     standingsType = "Drivers"
     if not driverStandings:
@@ -476,7 +456,7 @@ def create_f1_figure(race, year):
         dash.dependencies.Input('nextRace', 'n_clicks'),
         dash.dependencies.Input('standingsToggle', 'n_clicks')
     ]
-    ) # Update figure based on if the slider or year changes (either by year dial or prev next buttons)
+) # Update figure based on if the slider or year changes (either by year dial or prev next buttons)
 def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
     global driverStandings
     global loadedRaces
@@ -542,7 +522,7 @@ def update_slider_value(year, prevClicks, nextClicks): #year,
     [
         dash.dependencies.Input('f1-year', 'value')
     ]
-)
+) # Set the labels on the slider to the race names for the new season
 def update_slider_labels(year):
     get_race_names(year)
     return raceNames
@@ -552,7 +532,7 @@ def update_slider_labels(year):
     [
         dash.dependencies.Input('standingsToggle', 'n_clicks'),
     ]
-)
+) # Toggle from drivers or constructors standings, update button's interior text accordingly
 def change_toggle_label(clicks):
     global driverStandings
     if driverStandings:
