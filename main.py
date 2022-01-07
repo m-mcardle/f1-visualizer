@@ -10,14 +10,29 @@ import logging
 import logging.handlers
 from dash import dcc
 from dash import html
+from dash.exceptions import PreventUpdate
 from dash.dependencies import Input, Output
 from requests.api import get
 import random
 from clinched import calculateClinch
+import threading
+import requests_cache
+
+urls_expire_after = {
+    '*/last/*': 604800
+}
+requests_cache.install_cache('request_cache', urls_expire_after=urls_expire_after)
+
+# test = requests_cache.backends.sqlite.SQLiteCache(db_path='request_cache')
+# test.delete_url("http://ergast.com/api/f1/2021/last/constructorStandings")
+# exit()
 
 pd.options.plotting.backend = "plotly"
 
 app = dash.Dash(__name__)
+
+evt = threading.Event()
+evt.set()
 
 ns = "{http://ergast.com/mrd/1.4}"
 
@@ -27,7 +42,7 @@ standings = dict()
 # Array containing colours to use for each driver
 standingsTeamColours = []
 
-# Array containing marks that indicate if they are still in contension
+# Array containing marks that indicate if they are still in contention
 standingsEliminated = []
 
 teamColours = {
@@ -104,7 +119,6 @@ years = [*range(1950, 2022, 1)] # Range of years that this program supports
 # Variables that contain the year that the standings have been loaded for and amount of races the dictionary has been filled out for
 loadedYear = 0
 loadedRaces = 0
-inProgress = False
 
 # Set up the logging
 logFormatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
@@ -118,12 +132,22 @@ rootLogger.addHandler(fileHandler)
 consoleHandler = logging.StreamHandler()
 consoleHandler.setFormatter(logFormatter)
 rootLogger.addHandler(consoleHandler)
-rootLogger.setLevel(level=logging.INFO)
 
-rootLogger.error("This is a test error")
-rootLogger.warning("This is a test warning")
-rootLogger.debug("This is a test debug")
-rootLogger.info("This is a test info")
+if len(sys.argv) <= 1:
+    level = "ERROR"
+elif sys.argv[1].upper() == "DEBUG":
+    level = "DEBUG"
+elif sys.argv[1].upper() == "ERROR":
+    level = "ERROR"
+elif sys.argv[1].upper() == "WARNING":
+    level = "WARNING"
+elif sys.argv[1].upper() == "INFO":
+    level = "INFO"
+else:
+    level = "ERROR"
+
+
+rootLogger.setLevel(level=level)
 
 app.layout = html.Div([
     html.Div(
@@ -191,7 +215,7 @@ def getLeaderPoints():
     return { 'name': leaderName, 'points': leaderPoints }
 
 # Summary: Function that will call on calculateClinch and build out an array 
-# of data points that indicates drivers/teams eliminated from contension
+# of data points that indicates drivers/teams eliminated from contention
 def checkForClinch():
     leader = getLeaderPoints()
     leaderPoints = leader['points']
@@ -203,9 +227,9 @@ def checkForClinch():
         points = standings[name][loadedRaces]
         pointsFromLeader = float(leaderPoints) - float(points)
         if name == leaderName or calculateClinch(loadedYear, racesLeft, pointsFromLeader, driverStandings):
-            rootLogger.info(f"{name} still in contension. Only {pointsFromLeader} back of 1st with {racesLeft} races left. Has {points} points")
+            rootLogger.debug(f"{name} still in contention. Only {pointsFromLeader} back of 1st with {racesLeft} races left. Has {points} points")
         else:
-            rootLogger.info(f"{name} NOT in contension. Is {pointsFromLeader} back of 1st with only {racesLeft} races left. Has {points} points")
+            rootLogger.debug(f"{name} NOT in contention. Is {pointsFromLeader} back of 1st with only {racesLeft} races left. Has {points} points")
 
             standingsEliminated.append({'x': loadedRaces, 'y': points})
         i += 1
@@ -215,7 +239,6 @@ def checkForClinch():
 # param race: Integer representing the amount of races to initialize up to (ex: race = 2 ==> [0, 0, 0])
 # param year: Integer representing the year that will be parsed, if the year is changed then reset loadedRaces
 def FillDriversStandings(race, year):
-    global inProgress
     global loadedRaces
     global loadedYear
     global maxRace
@@ -247,13 +270,8 @@ def FillDriversStandings(race, year):
 
     standingsType = getStandingsType()
 
-    if inProgress: 
-        rootLogger.warning("Multiple threads detected. Not changing any data in this thread.")
-        return False
-    else: 
-        inProgress = True
-
     if loadedRaces < 1: # If no races are loaded, then get the list of drivers to init as a request
+        # with requests_cache.disabled():
         response = requests.get(f'http://ergast.com/api/f1/{year}/last/{standingsType}')
         content = response.text
         root = ET.fromstring(content)
@@ -307,7 +325,6 @@ def FillDriversStandings(race, year):
 # param race: Integer representing the amount of races to parse for
 # param year: Integer representing the year to parse for
 def StandingsBuilder(race, year):
-    global inProgress
     global loadedRaces
     global loadedYear
     global maxRace 
@@ -325,7 +342,7 @@ def StandingsBuilder(race, year):
         rootLogger.info('Sending Request for Race %s', str(currentRace))
 
         response = requests.get(f'http://ergast.com/api/f1/{year}/{currentRace}/{standingsType}')
-        rootLogger.info("Recieved Response")
+        rootLogger.info("Received Response")
 
         content = response.text
         # print(content)
@@ -349,7 +366,7 @@ def StandingsBuilder(race, year):
                 name = result.find(f"./{ns}Constructor/{ns}Name").text
                 rootLogger.info("Constructor: %s", name)
 
-            if name not in standings: # If driver not initilized in standings then skip him
+            if name not in standings: # If driver not initialized in standings then skip him
                 continue
 
             standings[name][currentRace] = (float(points)) # TODO bug index out of range using previous twice then next once
@@ -362,7 +379,6 @@ def StandingsBuilder(race, year):
 
     loadedRaces = race
 
-    inProgress = False
     rootLogger.info(f"Loaded Races = {loadedRaces}. Loaded Year = {loadedYear}\n")
     
 
@@ -407,7 +423,7 @@ def get_race_names(year):
         }
         i += 1
 
-    totalRaces = i
+    totalRaces = (i - 1)
 
 
 # Summary: Function used from callbacks to build out updated standings based on the new race or year
@@ -419,7 +435,7 @@ def create_f1_figure(race, year):
     if not driverStandings:
         standingsType = "Constructors"
 
-    if FillDriversStandings(race, year): # If the standings are successfully initilized then fill it with the correct Points
+    if FillDriversStandings(race, year): # If the standings are successfully initialized then fill it with the correct Points
         StandingsBuilder(race, year)
 
     df = pd.DataFrame(standings)
@@ -445,6 +461,7 @@ def create_f1_figure(race, year):
             dtick = 1
         )
     )
+    evt.set()
     return fig
 
 @app.callback(
@@ -460,6 +477,8 @@ def create_f1_figure(race, year):
 def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
     global driverStandings
     global loadedRaces
+
+    evt.wait()
 
     if (races == None): # TODO this feels bad
         races = 1
