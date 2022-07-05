@@ -19,12 +19,6 @@ import threading
 import requests_cache
 from ratelimit import limits, RateLimitException, sleep_and_retry
 
-print(dash.__version__)
-print(requests.__version__)
-print(pd.__version__)
-exit()
-
-
 urls_expire_after = {
     '*/last/*': 604800
 }
