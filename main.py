@@ -28,6 +28,7 @@ requests_cache.install_cache('request_cache', urls_expire_after=urls_expire_afte
 pd.options.plotting.backend = "plotly"
 
 app = dash.Dash(__name__)
+server = app.server
 
 evt = threading.Event()
 evt.set()
@@ -132,7 +133,7 @@ consoleHandler.setFormatter(logFormatter)
 rootLogger.addHandler(consoleHandler)
 
 if len(sys.argv) <= 1:
-    level = "ERROR"
+    level = "DEBUG"
 elif sys.argv[1].upper() == "DEBUG":
     level = "DEBUG"
 elif sys.argv[1].upper() == "ERROR":
@@ -142,7 +143,7 @@ elif sys.argv[1].upper() == "WARNING":
 elif sys.argv[1].upper() == "INFO":
     level = "INFO"
 else:
-    level = "ERROR"
+    level = "DEBUG"
 
 
 rootLogger.setLevel(level=level)
@@ -569,9 +570,3 @@ def change_toggle_label(clicks):
         return "View Constructors Standings"
     else:
         return "View Drivers Standings"
-
-
-if __name__ == '__main__':
-    app.run_server()
-
-server = app.server
