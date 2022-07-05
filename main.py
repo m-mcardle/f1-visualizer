@@ -17,15 +17,19 @@ import random
 from clinched import calculateClinch
 import threading
 import requests_cache
+from ratelimit import limits, RateLimitException, sleep_and_retry
+
+print(dash.__version__)
+print(requests.__version__)
+print(pd.__version__)
+exit()
+
 
 urls_expire_after = {
     '*/last/*': 604800
 }
 requests_cache.install_cache('request_cache', urls_expire_after=urls_expire_after)
 
-# test = requests_cache.backends.sqlite.SQLiteCache(db_path='request_cache')
-# test.delete_url("http://ergast.com/api/f1/2021/last/constructorStandings")
-# exit()
 
 pd.options.plotting.backend = "plotly"
 
@@ -34,7 +38,7 @@ app = dash.Dash(__name__)
 evt = threading.Event()
 evt.set()
 
-ns = "{http://ergast.com/mrd/1.4}"
+ns = "{http://ergast.com/mrd/1.5}"
 
 # Dictionary containing keys of drivers name, and values of Lists containing total points after each race
 standings = dict()
@@ -114,7 +118,7 @@ driverStandings = True # Boolean for if driver standings should be displayed
 
 raceNames = dict() # Dictionary containing the html values to include for each mark label for the slider
 
-years = [*range(1950, 2022, 1)] # Range of years that this program supports
+years = [*range(1950, 2023, 1)] # Range of years that this program supports
 
 # Variables that contain the year that the standings have been loaded for and amount of races the dictionary has been filled out for
 loadedYear = 0
@@ -171,7 +175,7 @@ app.layout = html.Div([
             dcc.Dropdown(
                 id='f1-year',
                 options=[{'label': str(i), 'value': str(i)} for i in years],
-                value='2021',
+                value='2022',
                 style={'width': '50%', 'display': 'inline-block'}
             ),
             ], style={'text-align': 'center'}
@@ -187,6 +191,19 @@ app.layout = html.Div([
         )
     ])
 ])
+
+
+# Rate-limiting Requests
+TWO_MINUTES = 120
+MAX_CALLS = 6
+
+@sleep_and_retry
+@limits(calls=MAX_CALLS, period=TWO_MINUTES)
+def make_request(req):
+    rootLogger.info(req)
+    resp = requests.get(req)
+    return (resp)
+
 
 # Summary: Function to clear all lists and reset loadedRaces to 0
 def clearStandings():
@@ -272,7 +289,7 @@ def FillDriversStandings(race, year):
 
     if loadedRaces < 1: # If no races are loaded, then get the list of drivers to init as a request
         # with requests_cache.disabled():
-        response = requests.get(f'http://ergast.com/api/f1/{year}/last/{standingsType}')
+        response = make_request(f'http://ergast.com/api/f1/{year}/last/{standingsType}')
         content = response.text
         root = ET.fromstring(content)
         lastRace = root.find(f".//{ns}StandingsTable")
@@ -341,7 +358,7 @@ def StandingsBuilder(race, year):
 
         rootLogger.info('Sending Request for Race %s', str(currentRace))
 
-        response = requests.get(f'http://ergast.com/api/f1/{year}/{currentRace}/{standingsType}')
+        response = make_request(f'http://ergast.com/api/f1/{year}/{currentRace}/{standingsType}')
         rootLogger.info("Received Response")
 
         content = response.text
@@ -361,10 +378,10 @@ def StandingsBuilder(race, year):
                 lastName = result.find(f"./{ns}Driver/{ns}FamilyName")
 
                 name = f"{firstName.text} {lastName.text}"
-                rootLogger.info("Driver: %s", name)
+                rootLogger.debug("Driver: %s", name)
             else:
                 name = result.find(f"./{ns}Constructor/{ns}Name").text
-                rootLogger.info("Constructor: %s", name)
+                rootLogger.debug("Constructor: %s", name)
 
             if name not in standings: # If driver not initialized in standings then skip him
                 continue
@@ -390,7 +407,7 @@ def get_max_races(year):
 
     standingsType = getStandingsType()
 
-    response = requests.get(f'http://ergast.com/api/f1/{year}/last/{standingsType}')
+    response = make_request(f'http://ergast.com/api/f1/{year}/last/{standingsType}')
     content = response.text
     root = ET.fromstring(content)
     lastRace = root.find(f".//{ns}StandingsTable")
@@ -405,7 +422,7 @@ def get_race_names(year):
     global totalRaces
     raceNames.clear()
 
-    response = requests.get(f'http://ergast.com/api/f1/{year}')
+    response = make_request(f'http://ergast.com/api/f1/{year}')
     content = response.text
     root = ET.fromstring(content)
     races = root.findall(f".//{ns}RaceTable/*")
@@ -561,4 +578,4 @@ def change_toggle_label(clicks):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server()

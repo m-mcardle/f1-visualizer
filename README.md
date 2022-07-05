@@ -8,7 +8,7 @@ This is done by sending requests to the Ergast Developer API (http://ergast.com/
 
 The responses from this API are then plotted implementing Plotly (https://plotly.com/) which<br> implements Dash to manage the application infrastructure needed for interactive graphing.
 
-The script install_deps.sh can be run to automatically install the needed dependencies for this progam.
+The script install_deps.sh can be run to automatically install the needed dependencies for this program.
 
 ---
 
