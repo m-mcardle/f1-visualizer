@@ -573,3 +573,5 @@ def change_toggle_label(clicks):
 
 if __name__ == '__main__':
     app.run_server()
+
+server = app.server
