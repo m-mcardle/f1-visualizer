@@ -19,6 +19,11 @@ Written using Python scripts that implement the Plotly graphing framework for th
 * Caching / Rate-limiting
 * Hosting (Heroku)
 
+### Screenshots 📸
+
+![image](https://user-images.githubusercontent.com/5607044/182189284-dee7b7a4-9e12-4465-aaba-fa20782228a7.png)
+
+
 <b>Matthew J. McArdle</b>
 <br>
 matthew.j.mcardle@gmail.com
