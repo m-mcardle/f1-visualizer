@@ -15,9 +15,9 @@ from dash.dependencies import Input, Output
 from requests.api import get
 import random
 from clinched import calculateClinch
-import threading
 import requests_cache
 from ratelimit import limits, RateLimitException, sleep_and_retry
+from colours import teamColours
 
 urls_expire_after = {
     '*/last/*': 604800
@@ -30,9 +30,6 @@ pd.options.plotting.backend = "plotly"
 app = dash.Dash(__name__)
 server = app.server
 
-evt = threading.Event()
-evt.set()
-
 ns = "{http://ergast.com/mrd/1.5}"
 
 # Dictionary containing keys of drivers name, and values of Lists containing total points after each race
@@ -43,69 +40,6 @@ standingsTeamColours = []
 
 # Array containing marks that indicate if they are still in contention
 standingsEliminated = []
-
-teamColours = {
-    "Alfa Romeo": "maroon",
-    "AlphaTauri": "grey",
-    "Alpine F1 Team": "blue",
-    "Aston Martin": "green",
-    "Red Bull": "navy",
-    "Brawn": "chartreuse",
-    "BAR": "whitesmoke",
-    "BMW Sauber": "cornflowerblue",
-    "BRM": "darkgreen",
-    "Benetton": "skyblue",
-    "Brabham": "darkblue",
-    "Brabham-Repco": "green",
-    "Caterham": "green",
-    "Cooper-Castellotti": "green",
-    "Cooper-Climax": "midnightblue",
-    "Cooper-Maserati": "red",
-    "Dallara": "red",
-    "Epperly": "yellow",
-    "Euro Brun": "orange",
-    "Fittipaldi": "yellow",
-    "Footwork": "whitesmoke",
-    "Forti": "yellow",
-    "Force India": "coral",
-    "Ferrari": "red",
-    "HRT": "whitesmoke",
-    "Haas F1 Team": "whitesmoke",
-    "Honda": "whitesmoke",
-    "Jaguar": "green",
-    "Jordan": "limegreen",
-    "Larrousse": "navy",
-    "Leyton House": "lightskyblue",
-    "Ligier": "blue",
-    "Lotus": "black",
-    "Lotus F1": "black",
-    "MF1": "red",
-    "Manor Marussia": "orange",
-    "Marussia": "red",
-    "Maserati": "darkred",
-    "McLaren": "orange",
-    "McLaren-Alfa Romeo": "yellow",
-    "McLaren-Ford": "whitesmoke",
-    "Mercedes": "aqua",
-    "Minardi": "yellow",
-    "Renault": "yellow",
-    "Racing Point": "hotpink",
-    "Sauber": "crimson",
-    "Spyker": "orange",
-    "Spyker MF1": "orange",
-    "Super Aguri": "whitesmoke",
-    "Team Lotus": "green",
-    "Toro Rosso": "midnightblue",
-    "Toleman": "blue",
-    "Toyota": "whitesmoke",
-    "Tyrrell": "mediumblue",
-    "Williams": "lightblue",
-    "Virgin": "orange",
-    "Gold": "gold",
-    "Silver": "silver",
-}
-# Use this to build out list of colours
-
 
 totalRaces = 100 # Integer for total amount of races scheduled in a season
 maxRace = 100 # Integer for amount of races completed in a season
@@ -165,38 +99,38 @@ app.layout = html.Div([
                     step=1,
                     dots=True
                 ),
-                ], style={'width': '50%', 'display': 'inline-block'}
+                ], style={'width': '100%', 'display': 'inline-block'}
             ),
+            ], style={'text-align': 'center'}
+        ),
+        html.Div([
             dcc.Dropdown(
                 id='f1-year',
                 options=[{'label': str(i), 'value': str(i)} for i in years],
                 value='2022',
                 style={'width': '50%', 'display': 'inline-block'}
             ),
-            ], style={'text-align': 'center'}
-        ),
-        html.Div([
-            html.Button("Previous Race", id="previousRace", style={'margin': 'auto', 'padding': '10px', 'width': '30%'}),
-            html.Button("Next Race", id="nextRace", style={'margin': 'auto', 'padding': '10px', 'width': '30%'})
-            ], style={'text-align': 'center', 'margin': 'auto', 'padding': '10px', 'width': '50%'}
-        ),
-        html.Div([
             html.Button("View Constructors Standings", id="standingsToggle", style={'margin': 'auto', 'padding': '10px', 'width': '30%'})
-            ], style={'text-align': 'center', 'margin': 'auto', 'padding': '10px', 'width': '50%'}
+            ], style={'text-align': 'center', 'margin': 'auto', 'padding': '10px', 'width': '100%'}
         )
     ])
 ])
 
 
 # Rate-limiting Requests
-TWO_MINUTES = 120
-MAX_CALLS = 6
+ONE_HOUR = 3600
+MAX_CALLS_PER_HOUR = 200
+ONE_SECOND = 1
+MAX_CALLS_PER_SECOND = 4
 
 @sleep_and_retry
-@limits(calls=MAX_CALLS, period=TWO_MINUTES)
+@limits(calls=MAX_CALLS_PER_HOUR, period=ONE_HOUR)
+@limits(calls=MAX_CALLS_PER_SECOND, period=ONE_SECOND)
 def make_request(req):
     rootLogger.info(req)
     resp = requests.get(req)
+    if (resp.from_cache == True):
+        rootLogger.info('Response fetched from cache')
     return (resp)
 
 
@@ -357,8 +291,6 @@ def StandingsBuilder(race, year):
         rootLogger.info("Received Response")
 
         content = response.text
-        # print(content)
-
 
         root = ET.fromstring(content)
 
@@ -382,8 +314,6 @@ def StandingsBuilder(race, year):
                 continue
 
             standings[name][currentRace] = (float(points)) # TODO bug index out of range using previous twice then next once
-
-
 
         rootLogger.info("Parsing End")
         loadedRaces = currentRace
@@ -430,7 +360,7 @@ def get_race_names(year):
             'label': raceName, 
             'style':
                 {
-                    'display': 'block', 'width': '50px', 'font-size': '7px', 'word-wrap': 'break-word', 'word-break': 'break-all', 'white-space': 'normal'
+                    'display': 'block', 'width': 'fit-content', 'font-size': '8px', 'overflow': 'visible'
                 }
         }
         i += 1
@@ -473,7 +403,6 @@ def create_f1_figure(race, year):
             dtick = 1
         )
     )
-    evt.set()
     return fig
 
 @app.callback(
@@ -481,16 +410,12 @@ def create_f1_figure(race, year):
     [
         dash.dependencies.Input('f1-slider', 'value'),
         dash.dependencies.Input('f1-year', 'value'),
-        dash.dependencies.Input('previousRace', 'n_clicks'),
-        dash.dependencies.Input('nextRace', 'n_clicks'),
         dash.dependencies.Input('standingsToggle', 'n_clicks')
     ]
 ) # Update figure based on if the slider or year changes (either by year dial or prev next buttons)
-def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
+def update_graph(races, year, toggleClicks):
     global driverStandings
     global loadedRaces
-
-    evt.wait()
 
     if (races == None): # TODO this feels bad
         races = 1
@@ -500,11 +425,7 @@ def update_graph(races, year, prevClicks, nextClicks, toggleClicks):
         return create_f1_figure(races, year)
 
     trigger = ctx.triggered[0]['prop_id'].split('.')[0] # Gets the name of the id of the trigger
-    if (trigger == "previousRace" and loadedRaces > 1):
-        return create_f1_figure(loadedRaces - 1, year)
-    elif (trigger == "nextRace" and loadedRaces != maxRace):
-        return create_f1_figure(loadedRaces + 1, year)
-    elif (trigger == "standingsToggle"):
+    if (trigger == "standingsToggle"):
         rootLogger.info("Standings type has be toggled. Clearing data.")
         driverStandings = not driverStandings
         clearStandings()
@@ -523,31 +444,6 @@ def update_slider_max(year):
     get_max_races(year)
     return maxRace
 
-
-@app.callback(
-    dash.dependencies.Output('f1-slider', 'value'),
-    [
-        dash.dependencies.Input('f1-year', 'value'),
-        dash.dependencies.Input('previousRace', 'n_clicks'),
-        dash.dependencies.Input('nextRace', 'n_clicks')
-    ]
-) # Set the value to 1 every time the year changes
-def update_slider_value(year, prevClicks, nextClicks): #year, 
-
-    ctx = dash.callback_context
-    if not ctx.triggered: # If no trigger then just set it to 1
-        return 1
-
-    trigger = ctx.triggered[0]['prop_id'].split('.')[0] # Gets the name of the id of the trigger
-    if (trigger == "previousRace"):
-        if (loadedRaces <= 1): return loadedRaces
-        return loadedRaces - 1
-    elif (trigger == "nextRace"):
-        if (loadedRaces >= maxRace): return loadedRaces
-        return loadedRaces + 1
-    else:
-        return 1
-
 @app.callback(
     dash.dependencies.Output('f1-slider', 'marks'),
     [
@@ -565,8 +461,7 @@ def update_slider_labels(year):
     ]
 ) # Toggle from drivers or constructors standings, update button's interior text accordingly
 def change_toggle_label(clicks):
-    global driverStandings
-    if driverStandings:
+    if clicks % 2 == 0:
         return "View Constructors Standings"
     else:
         return "View Drivers Standings"
